@@ -1,6 +1,7 @@
 #version 330 core
 
 uniform sampler2D screenImage;
+uniform sampler2D bloomImage;
 
 uniform ivec2 physical_border_dims = ivec2(8,8);
 uniform ivec2 screen_dims = ivec2(512,512); // of terminal
@@ -9,10 +10,28 @@ uniform float scanlineStrength = .13;
 uniform float noiseStrength = .03;
 
 uniform float ambient = .12;
-uniform float text_brightness = .7;
+uniform float text_brightness = .5;
+uniform float bloomStrength = 1.2;
 
 in vec2 inUV;
 out vec4 color;
+
+vec3 BlurText3x3(ivec2 pos) {
+    int size = 3;
+    float kernel[9] = float[9](1,1,1,1,1,1,1,1,1);
+    vec3 total = vec3(0);
+    for (int x = 1; x<=1; x++){
+        for (int y = 1; y<=1; y++){
+            ivec2 p = pos + ivec2(x,y);
+            int index = (y+1)*size + (x+1);
+            float weight = kernel[index];
+            vec2 texCoords = vec2(p)/screen_dims;
+            vec3 c = texture(screenImage, texCoords).xyz;
+            total += c * weight;
+        }   
+    } 
+    return total / 9;
+}
 
 vec2 flipY(vec2 iv){
     return vec2(iv.x, 1-iv.y);
@@ -58,9 +77,13 @@ void main(){
 
     vec3 termCol = texture(screenImage, flipY(UV)).xyz;
     
+    vec3 bloomCol = texture(bloomImage, flipY(UV)).xyz;
+
+
     vec3 col = vec3(ambient) + termCol * text_brightness;
-    
-    //col += scanAddition * scanlineStrength ;
+    col += bloomCol * bloomStrength;    
+
+    col += scanAddition * scanlineStrength ;
     col += ((noiseAddition) * noiseStrength);
 
     //col += .2 * mix(vec3(0), vec3(1), float((pix.x%2==0) != (pix.y%2==0)));

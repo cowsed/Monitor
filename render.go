@@ -12,6 +12,36 @@ import (
 	"github.com/go-gl/glfw/v3.3/glfw"
 )
 
+func BuildCompute(comp_shader_source string) (uint32, error) {
+	var compute uint32
+	var err error
+	// compute shader
+	compute, err = compileShader(comp_shader_source, gl.COMPUTE_SHADER)
+	if err != nil {
+		return 0, err
+	}
+	// shader Program
+	program := gl.CreateProgram()
+	gl.AttachShader(program, compute)
+	gl.LinkProgram(program)
+
+	//Check Link Errors
+	var isLinked int32
+	gl.GetProgramiv(program, gl.LINK_STATUS, &isLinked)
+	if isLinked == gl.FALSE {
+		var maxLength int32
+		gl.GetProgramiv(compute, gl.INFO_LOG_LENGTH, &maxLength)
+
+		infoLog := make([]uint8, maxLength+1) //[bufSize]uint8{}
+		gl.GetShaderInfoLog(compute, maxLength, &maxLength, &infoLog[0])
+
+		return 0, fmt.Errorf(";ink Result %s", string(infoLog))
+
+	}
+	return program, nil
+
+}
+
 // Builds the opengl program
 func BuildProgram(FragSrc, VertSrc string) (uint32, error) {
 
