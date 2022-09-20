@@ -154,7 +154,9 @@ func initWindow() *glfw.Window {
 	if err != nil {
 		panic(err)
 	}
-	window, err := glfw.CreateWindow(win_dims[0], win_dims[1], "Testing", nil, nil)
+	mon := glfw.GetPrimaryMonitor()
+
+	window, err := glfw.CreateWindow(int(win_dims[0]), int(win_dims[1]), "Testing", mon, nil)
 	if err != nil {
 		panic(err)
 	}

@@ -3,7 +3,7 @@
 uniform sampler2D screenImage;
 uniform sampler2D bloomImage;
 
-uniform ivec2 physical_border_dims = ivec2(8,8);
+uniform ivec2 physical_border_dims = ivec2(64,8);
 uniform ivec2 screen_dims = ivec2(512,512); // of terminal
 uniform int ScanlinePosition = 0;
 uniform float scanlineStrength = .13;
