@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/png"
-	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/go-gl/gl/v4.6-core/gl"
 	"github.com/go-gl/glfw/v3.3/glfw"
@@ -15,7 +15,7 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-var myFace font.Face
+var myFontFace font.Face
 
 func addLabel(img *image.RGBA, x, y int, label string, col color.RGBA) {
 	point := fixed.Point26_6{X: fixed.I(x), Y: fixed.I(y)}
@@ -23,7 +23,7 @@ func addLabel(img *image.RGBA, x, y int, label string, col color.RGBA) {
 	d := &font.Drawer{
 		Dst:  img,
 		Src:  image.NewUniform(col),
-		Face: myFace,
+		Face: myFontFace,
 		Dot:  point,
 	}
 	d.DrawString(label)
@@ -63,7 +63,7 @@ func texFromImage(img *image.RGBA) uint32 {
 	return textureHandle
 }
 
-func overwriteTexFromImage(img *image.RGBA, textureHandle uint32) {
+func overwriteTexWithImage(img *image.RGBA, textureHandle uint32) {
 	var TEXTURE_WIDTH, TEXTURE_HEIGHT int32 = int32(img.Rect.Dx()), int32(img.Rect.Dy())
 
 	gl.ActiveTexture(gl.TEXTURE0)
@@ -76,8 +76,6 @@ func overwriteTexFromImage(img *image.RGBA, textureHandle uint32) {
 		gl.UNSIGNED_BYTE, gl.Ptr(img.Pix))
 
 }
-
-var vbo, vao uint32
 
 //go:embed Shaders/full_screen_quad.frag
 var fragSrc string
@@ -101,7 +99,7 @@ func doCompute(program uint32, from, to uint32, size [2]int32) {
 	gl.MemoryBarrier(gl.SHADER_IMAGE_ACCESS_BARRIER_BIT)
 
 }
-func doDrawing(screenProg uint32, scanline_pos int32, texture, bloom_handle uint32) {
+func doDrawing(screenProg uint32, vao uint32, scanline_pos int32, texture, bloom_handle uint32) {
 	gl.BindVertexArray(vao)
 	gl.UseProgram(screenProg)
 
@@ -126,83 +124,110 @@ func doDrawing(screenProg uint32, scanline_pos int32, texture, bloom_handle uint
 	gl.DrawArrays(gl.TRIANGLES, 0, 6)
 }
 
-func main() {
+func makeGLStuff() (uint32, uint32, uint32, *image.RGBA, uint32, uint32, uint32) {
+	_, vao := screenVBOVAO()
+	screenProg, err := BuildProgram(fragSrc, vertSrc)
+	check(err)
+	blur_program, err := BuildCompute(compSrc)
+	check(err)
 
-	//ttfFile, err := os.Open("Fonts/PxPlus_IBM_VGA9.ttf")
-	//check(err)
-	//defer ttfFile.Close()
-	//bys, err := io.ReadAll(ttfFile)
-	//check(err)
-	//font, err := truetype.Parse(bys)
-	//check(err)
-	myFace = basicfont.Face7x13
+	operating_img := image.NewRGBA(image.Rect(0, 0, int(terminal_dims[0])+2*int(term_borders_dims[0]), int(terminal_dims[1])+2*int(term_borders_dims[1])))
+	clearImage(operating_img, color.RGBA{0, 0, 0, 255})
+
+	textHandle := texFromImage(operating_img)
+	pingHandle := texFromImage(operating_img)
+	pongHandle := texFromImage(operating_img)
+
+	return vao, screenProg, blur_program, operating_img, textHandle, pingHandle, pongHandle
+}
+
+func readFromCommand(cmd *exec.Cmd, datachan chan string) {
+	stdout, err := cmd.StdoutPipe()
+	check(err)
+	for {
+		bs := make([]byte, 200)
+		n, err := stdout.Read(bs)
+		check(err)
+		if n > 0 {
+			fmt.Println("read some", string(bs))
+			check(err)
+			datachan <- string(bs)
+		}
+	}
+}
+
+// xos4 termius is a good font
+func main() {
+	myFontFace = basicfont.Face7x13
 
 	window := initWindow()
 	defer cleanupWindow(window)
-	window.SetKeyCallback(keyCall)
-	//glfw.WindowHint(glfw.Maximized, glfw.True)
-	//window.Maximize()
 
-	vbo, vao = screenVBOVAO()
-	screenProg, err := BuildProgram(fragSrc, vertSrc)
-	check(err)
-
-	var blur_program uint32
-	blur_program, err = BuildCompute(compSrc)
-	check(err)
-
-	img := image.NewRGBA(image.Rect(0, 0, int(terminal_dims[0])+2*int(term_borders_dims[0]), int(terminal_dims[1])+2*int(term_borders_dims[1])))
-	clearImage(img, color.RGBA{0, 0, 0, 255})
-	textHandle := texFromImage(img)
-	pingHandle := texFromImage(img)
-	pongHandle := texFromImage(img)
-
+	vao, screenProg, blur_program, operating_img, textHandle, pingHandle, pongHandle := makeGLStuff()
 	var lines []string
 
-	f, err := os.Create("out.png")
+	cmd := exec.Command("bash")
+
+	cmd_output_chan := make(chan string)
+	cmd_output_history := ""
+	go readFromCommand(cmd, cmd_output_chan)
+
+	writer, err := cmd.StdinPipe()
 	check(err)
-	err = png.Encode(f, img)
-	check(err)
-	f.Close()
+	writer.Write([]byte("ls\n"))
+	cmd.Start()
+
+	writer.Write([]byte("pwd\n"))
 
 	var frame_num = 0
 	var scanline_pos int32 = 0
-
-	fmt.Println(img.Bounds())
-
-	//xos4 termius is a good font
 	for !window.ShouldClose() {
-
 		frame_num++
 		scanline_pos += 501
 		scanline_pos %= int32(terminal_dims[0] * terminal_dims[1])
 
-		clearImage(img, color.RGBA{0, 0, 0, 255})
+		clearImage(operating_img, color.RGBA{0, 0, 0, 255})
 		if showui {
-			lines = MakeLines()
+			lines = MakeUI()
 		} else {
-			lines = []string{"", "\xDB", "this is the second line", "!@#$%^&*()-=_+", "0123456789012345678901234567890123456789", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a", "a"}
+			select {
+			case str, ok := <-cmd_output_chan:
+				if ok {
+					if str != "" {
+						fmt.Printf("Value %s was read.\n", str)
+						cmd_output_history += str
+					}
+				} else {
+					fmt.Println("Channel closed!")
+					break
+				}
+			default:
+			}
+			lines = strings.Split(cmd_output_history, "\n")
+
 		}
 
-		lines[0] = fmt.Sprint("Frame:", frame_num)
-		drawStringToImage(lines, img, color.RGBA{255, 255, 255, 255})
-		//imgHandle := texFromImage(img)
-		overwriteTexFromImage(img, textHandle)
+		//draw text into image, texture
+		drawStringToImage(lines, operating_img, color.RGBA{255, 255, 255, 255})
+		overwriteTexWithImage(operating_img, textHandle)
 
 		// Do blurring
 		doCompute(blur_program, textHandle, pingHandle, terminal_dims)
 		doCompute(blur_program, pingHandle, pongHandle, terminal_dims)
 
-		gl.ClearColor(clear_col[0], clear_col[1], clear_col[2], clear_col[3])
-		gl.Clear(gl.COLOR_BUFFER_BIT)
+		prerender()
 
-		gl.Viewport(0, 0, win_dims[0], win_dims[1])
+		doDrawing(screenProg, vao, scanline_pos, textHandle, pongHandle)
 
-		doDrawing(screenProg, scanline_pos, textHandle, pongHandle)
-
+		//post render
 		glfw.PollEvents()
 		window.SwapBuffers()
 	}
+}
+func prerender() {
+	gl.ClearColor(clear_col[0], clear_col[1], clear_col[2], clear_col[3])
+	gl.Clear(gl.COLOR_BUFFER_BIT)
+	gl.Viewport(0, 0, win_dims[0], win_dims[1])
 }
 
 func clearImage(img *image.RGBA, col color.RGBA) {

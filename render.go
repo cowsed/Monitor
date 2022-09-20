@@ -161,6 +161,8 @@ func initWindow() *glfw.Window {
 		panic(err)
 	}
 	window.MakeContextCurrent()
+	window.SetKeyCallback(keyCall)
+
 	// Important! Call gl.Init only under the presence of an active OpenGL context,
 	// i.e., after MakeContextCurrent.
 	if err := gl.Init(); err != nil {

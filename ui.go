@@ -70,7 +70,7 @@ func prevSelection() {
 		selected--
 	}
 }
-func MakeLines() []string {
+func MakeUI() []string {
 	lines := []string{}
 	lines = append(lines, "Frame")
 	lines = append(lines, "[Settings]:")
