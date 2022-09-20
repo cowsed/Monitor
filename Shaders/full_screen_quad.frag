@@ -16,22 +16,6 @@ uniform float bloomStrength = 1.2;
 in vec2 inUV;
 out vec4 color;
 
-vec3 BlurText3x3(ivec2 pos) {
-    int size = 3;
-    float kernel[9] = float[9](1,1,1,1,1,1,1,1,1);
-    vec3 total = vec3(0);
-    for (int x = 1; x<=1; x++){
-        for (int y = 1; y<=1; y++){
-            ivec2 p = pos + ivec2(x,y);
-            int index = (y+1)*size + (x+1);
-            float weight = kernel[index];
-            vec2 texCoords = vec2(p)/screen_dims;
-            vec3 c = texture(screenImage, texCoords).xyz;
-            total += c * weight;
-        }   
-    } 
-    return total / 9;
-}
 
 vec2 flipY(vec2 iv){
     return vec2(iv.x, 1-iv.y);
@@ -79,8 +63,8 @@ void main(){
     
     vec3 bloomCol = texture(bloomImage, flipY(UV)).xyz;
 
-
-    vec3 col = vec3(ambient) + termCol * text_brightness;
+    vec3 textCol = vec3(ambient) + termCol * text_brightness;;
+    vec3 col = textCol;
     col += bloomCol * bloomStrength;    
 
     col += scanAddition * scanlineStrength ;
@@ -93,12 +77,12 @@ void main(){
     float fast_dist = sdRoundedBox((UV-.5)*1.04, vec2(.5), vec4(.06));
 
     if (dist>0){
-        col -= dist * .3;
+        col -= dist * .5; //* textCol*2;
     }
 
     //fast fade out at edges
     if (fast_dist>0){
-        col -= pow(fast_dist*1.4,.8);
+        col -= pow(fast_dist*1.4,.8)*1.5;// * textCol;
     }
 
     if (UV.x<0 || UV.x>1 || UV.y<0 || UV.y>1){
