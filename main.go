@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"regexp"
-	"strings"
 	"syscall"
 
 	"golang.org/x/term"
@@ -28,6 +27,9 @@ import (
 var myFontFace font.Face
 
 func addLabel(img *image.RGBA, x, y int, label string, col color.RGBA) {
+	if len(label) == 0 {
+		return
+	}
 	point := fixed.Point26_6{X: fixed.I(x), Y: fixed.I(y)}
 
 	d := &font.Drawer{
@@ -62,17 +64,23 @@ func terminal(ptmx *os.File, mw io.Writer) error {
 	defer func() { _ = ptmx.Close() }() // Best effort.
 
 	// Handle pty size.
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGWINCH)
+	sizechange_channel := make(chan os.Signal, 1)
+	signal.Notify(sizechange_channel, syscall.SIGWINCH)
 	go func() {
-		for range ch {
-			if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
-				log.Printf("error resizing pty: %s", err)
-			}
+		for range sizechange_channel {
+			//if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
+			//	log.Printf("error resizing pty: %s", err)
+			//}
+			pty.Setsize(term_pty, &pty.Winsize{
+				Rows: uint16(term_cells[1]),
+				Cols: uint16(term_cells[0]),
+				X:    0,
+				Y:    0,
+			})
 		}
 	}()
-	ch <- syscall.SIGWINCH                        // Initial resize.
-	defer func() { signal.Stop(ch); close(ch) }() // Cleanup signals when done.
+	sizechange_channel <- syscall.SIGWINCH                                        // Initial resize.
+	defer func() { signal.Stop(sizechange_channel); close(sizechange_channel) }() // Cleanup signals when done.
 
 	// Set stdin in raw mode.
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
@@ -83,43 +91,29 @@ func terminal(ptmx *os.File, mw io.Writer) error {
 
 	// Copy stdin to the pty and the pty to stdout.
 	// NOTE: The goroutine will keep reading until the next keystroke before returning.
-	go func() { _, _ = io.Copy(ptmx, os.Stdin) }()
+	//go func() { _, _ = io.Copy(ptmx, os.Stdin) }()
+
+	//Copy the output to the screen - go through mw
 	_, _ = io.Copy(mw, ptmx)
 
 	return nil
 }
 
-const ansi = "[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
+const ansi1 = "[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
+const ansi2 = "[\u001B\u009B][[\\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))"
 
-var re = regexp.MustCompile(ansi)
+var re = regexp.MustCompile(ansi2)
 
 func Strip(str string) string {
 	return re.ReplaceAllString(str, "")
 }
-
-type mywriter struct {
-	s string
+func FindAnsi(str string) []string {
+	return re.FindAllString(str, -1)
+}
+func FindAnsiIndex(str string) [][]int {
+	return re.FindAllStringIndex(str, -1)
 }
 
-func (mw *mywriter) Write(bs []byte) (int, error) {
-	//mw.s += Strip(strings.ReplaceAll(string(bs), "\n", ""))
-	noAnsi := Strip(string(bs))
-	//rper := strings.NewReplacer("\n", "", "\t", "    ")
-	//rper.Replace(Strip(string(bs)))
-	for _, b := range []byte(noAnsi) {
-		if b == 0x07 {
-			mw.s = mw.s[:max(len(mw.s)-1, 0)]
-		} else if b == 0x08 {
-
-		} else {
-
-			mw.s += string(b)
-		}
-	}
-	//log.Println(string(bs))
-
-	return len(bs), nil
-}
 func max(a, b int) int {
 	if a > b {
 		return a
@@ -127,10 +121,12 @@ func max(a, b int) int {
 	return b
 }
 
-var term_writer *os.File
+var term_pty *os.File
 
 // xos4 termius is a good font
 func main() {
+	log.SetFlags(0)
+	log.SetPrefix("\r")
 	//Rendering
 	myFontFace = basicfont.Face7x13
 
@@ -141,11 +137,20 @@ func main() {
 	c := exec.Command("sh")
 
 	// Start the command with a pty.
-	ptmx, err := pty.Start(c)
-	term_writer = ptmx
+	ptmx, err := pty.StartWithSize(c, &pty.Winsize{
+		Rows: uint16(term_cells[1]),
+		Cols: uint16(term_cells[0]),
+		X:    0,
+		Y:    0,
+	})
+	term_pty = ptmx
 	check(err)
 
-	var mw = &mywriter{}
+	var mw = NewTerminal(int(term_cells[0]), int(term_cells[1]), int(char_dims[0]), int(char_dims[1]))
+	mw.WriteChar(0, 0, "w")
+	mw.WriteChar(1, 0, "e")
+	mw.WriteChar(1, 0, "e")
+	log.Println("STARTING")
 	go func() {
 		if err := terminal(ptmx, mw); err != nil {
 			log.Fatal(err)
@@ -167,16 +172,18 @@ func main() {
 		clearImage(operating_img, color.RGBA{0, 0, 0, 255})
 		if showui {
 			lines = MakeUI()
+			//draw text into image, texture
+			drawStringToImage(lines, operating_img, color.RGBA{255, 255, 255, 255})
+			overwriteTexWithImage(operating_img, textHandle)
 		} else {
+			clearImage(operating_img, color.RGBA{0, 0, 0, 255})
 
-			lines = strings.Split(mw.s, "\r")
-			lines = lines[max(0, len(lines)-int(term_cells[1])):]
+			mw.DrawToImage(operating_img)
+			//lines = strings.Split(mw.s, "\n")
+			//lines = lines[max(0, len(lines)-int(term_cells[1])):]
+			overwriteTexWithImage(operating_img, textHandle)
 
 		}
-
-		//draw text into image, texture
-		drawStringToImage(lines, operating_img, color.RGBA{255, 255, 255, 255})
-		overwriteTexWithImage(operating_img, textHandle)
 
 		// Do blurring
 		doCompute(blur_program, textHandle, pingHandle, terminal_dims)

@@ -50,11 +50,12 @@ func keyCall(w *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mod
 		}
 	} else {
 		if key == glfw.KeyBackspace && action == glfw.Press {
-			term_writer.Write([]byte{0x08})
+			term_pty.Write([]byte{0x08})
 		}
+
 		for keycomb, str := range keymap {
 			if key == keycomb.key && mods == keycomb.mod && action == glfw.Press {
-				term_writer.WriteString(str)
+				term_pty.WriteString(str)
 			}
 		}
 	}
@@ -67,6 +68,11 @@ type keyCombo struct {
 }
 
 var keymap = map[keyCombo]string{
+	{glfw.KeyLeft, 0}:  "\x1b[1D",
+	{glfw.KeyRight, 0}: "\x1b[1C",
+	{glfw.KeyUp, 0}:    "\x1b[1A",
+	{glfw.KeyDown, 0}:  "\x1b[1B",
+
 	{glfw.KeyEnter, 0}:             "\r",
 	{glfw.KeyTab, 0}:               "\t",
 	{glfw.KeySpace, 0}:             " ",
@@ -76,9 +82,32 @@ var keymap = map[keyCombo]string{
 	{glfw.KeyEqual, 0}:             "=",
 	{glfw.KeyEqual, glfw.ModShift}: "+",
 
+	{glfw.KeyComma, 0}:              ",",
+	{glfw.KeyPeriod, 0}:             ".",
+	{glfw.KeyComma, glfw.ModShift}:  ",",
+	{glfw.KeyPeriod, glfw.ModShift}: ">",
+
+	{glfw.KeySlash, 0}:             "/",
+	{glfw.KeySlash, glfw.ModShift}: "?",
+
+	{glfw.KeyApostrophe, 0}:             "'",
+	{glfw.KeyApostrophe, glfw.ModShift}: "\"",
+
+	{glfw.KeyBackslash, 0}:             "\\",
+	{glfw.KeyBackslash, glfw.ModShift}: "|",
+
+	{glfw.KeyLeftBracket, 0}:             "[",
+	{glfw.KeyLeftBracket, glfw.ModShift}: "{",
+
+	{glfw.KeyRightBracket, 0}:             "]",
+	{glfw.KeyRightBracket, glfw.ModShift}: "}",
+
+	{glfw.KeySemicolon, 0}:             ";",
+	{glfw.KeySemicolon, glfw.ModShift}: ":",
+
 	{glfw.KeyC, glfw.ModControl}: string([]byte{0x03}),
 	{glfw.KeyD, glfw.ModControl}: string([]byte{0x04}),
-	{glfw.KeyD, glfw.ModControl}: string([]byte{0x04}),
+	{glfw.KeyZ, glfw.ModControl}: string([]byte{0x04}),
 
 	{glfw.KeySlash, 0}: "/",
 
@@ -186,7 +215,6 @@ func prevSelection() {
 }
 func MakeUI() []string {
 	lines := []string{}
-	lines = append(lines, "Frame")
 	lines = append(lines, "[Settings]:")
 	lines = append(lines, fmt.Sprintf("Text Brightness: <%2.3f>", text_brightness))
 	lines = append(lines, fmt.Sprintf("Scanline Strength: <%2.3f>", scanline_strength))
@@ -195,7 +223,14 @@ func MakeUI() []string {
 	lines = append(lines, fmt.Sprintf("Bloom Strength: <%2.3f>", bloomStrength))
 	lines = append(lines, fmt.Sprintf("Bloom Brightness: <%2.3f>", bloomBrightness))
 
-	lines[selected+2] = "> " + lines[selected+2]
+	lines[selected+1] = "> " + lines[min(selected+1, len(lines)-1)]
 
 	return lines
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
