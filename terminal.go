@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"log"
 
+	"github.com/faiface/beep"
 	"golang.org/x/image/colornames"
 )
 
@@ -26,7 +27,8 @@ type Cell struct {
 	char  string
 }
 type termHandler struct {
-	buffer [][]Cell
+	buffer, alternate [][]Cell
+	useAlternate      bool
 
 	cursorX, cursorY int
 
@@ -34,10 +36,12 @@ type termHandler struct {
 
 	defFG, defBG  int
 	cursorEnabled bool
+
+	bellSound beep.StreamSeekCloser
 }
 
 func safePrintAns(ansi string) {
-	s := "CODE: "
+	s := ""
 	for _, b := range ansi {
 		if b == 0x1b {
 			s += "ESC"
@@ -49,12 +53,16 @@ func safePrintAns(ansi string) {
 }
 func NewTerminal(width, height int, char_width, char_height int) *termHandler {
 	buf := make([][]Cell, height)
+	alt := make([][]Cell, height)
 	for i := range buf {
 		buf[i] = make([]Cell, width)
+		alt[i] = make([]Cell, width)
 	}
 
 	mw := &termHandler{
 		buffer:        buf,
+		alternate:     alt,
+		useAlternate:  false,
 		cursorX:       0,
 		cursorY:       0,
 		charWidth:     char_width,
@@ -75,8 +83,13 @@ func fillRect(rect image.Rectangle, img *image.RGBA, color color.RGBA) {
 }
 
 func (th termHandler) DrawToImage(img *image.RGBA) {
-	for y := range th.buffer {
-		for x, cell := range th.buffer[y] {
+	opBuffer := th.buffer //buffer to operate on
+	//if th.useAlternate {
+	//	opBuffer = th.buffer
+	//}
+
+	for y := range opBuffer {
+		for x, cell := range opBuffer[y] {
 			startx := x*th.charWidth + int(term_borders_dims[0])
 			starty := y*th.charHeight + int(term_borders_dims[1])
 			fg, bg := cell.style.ForegroundRGBA(), cell.style.BackgroundRGBA()
@@ -244,11 +257,26 @@ func (mw *termHandler) HandleEscape(code string) {
 		mw.cursorEnabled = false
 		return
 	}
-	if code == "[K" {
-		log.Println("ESC[K")
+	if code == "[?1049h" {
+		//use alternate
+		mw.useAlternate = true
+		return
+	}
+	if code == "[?1049l" {
+		//use default
+		mw.useAlternate = false
+		return
+	}
+
+	if code == "[K" || code == "[0K" {
 		mw.eraseAfterCursor()
 		return
 	}
+	if code == "[2K" {
+		mw.eraseLine(mw.cursorY)
+		return
+	}
+
 	if code[:1] == "[" && code[len(code)-1:] == "G" {
 		x := 0
 		n, err := fmt.Sscanf(code, "[%dG", &x)
@@ -294,6 +322,9 @@ func (mw *termHandler) Write(bs []byte) (int, error) {
 			if i == startAnsi { //check if this position is the start of an escape code
 				code := line[i:endAnsi]
 				mw.HandleEscape(code)
+
+				//safePrintAns("Line: " + line)
+				//log.Println(ansiIndices)
 				i = endAnsi
 				ansiIndex++
 				if ansiIndex < len(ansiIndices) && i == ansiIndices[ansiIndex][0] {
@@ -322,7 +353,7 @@ func (mw *termHandler) Write(bs []byte) (int, error) {
 			mw.safeCursor()
 			continue
 		} else if char == 0x07 {
-			log.Println("Bell!")
+
 			continue
 		} else if char == 0x08 {
 			//Backspace
@@ -336,7 +367,11 @@ func (mw *termHandler) Write(bs []byte) (int, error) {
 		//bounds check buffer access
 		if mw.cursorY < len(mw.buffer) {
 			if mw.cursorX < len(mw.buffer[0]) { //no line wrapping yet
-				mw.buffer[mw.cursorY][mw.cursorX].char = string(line[i])
+				if mw.useAlternate {
+					mw.alternate[mw.cursorY][mw.cursorX].char = string(line[i])
+				} else {
+					mw.buffer[mw.cursorY][mw.cursorX].char = string(line[i])
+				}
 				mw.cursorX++
 
 			}

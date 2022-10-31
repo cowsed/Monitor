@@ -114,17 +114,11 @@ func FindAnsiIndex(str string) [][]int {
 	return re.FindAllStringIndex(str, -1)
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 var term_pty *os.File
 
 // xos4 termius is a good font
 func main() {
+
 	log.SetFlags(0)
 	log.SetPrefix("\r")
 	//Rendering
@@ -143,13 +137,11 @@ func main() {
 		X:    0,
 		Y:    0,
 	})
+
 	term_pty = ptmx
 	check(err)
 
 	var mw = NewTerminal(int(term_cells[0]), int(term_cells[1]), int(char_dims[0]), int(char_dims[1]))
-	mw.WriteChar(0, 0, "w")
-	mw.WriteChar(1, 0, "e")
-	mw.WriteChar(1, 0, "e")
 	log.Println("STARTING")
 	go func() {
 		if err := terminal(ptmx, mw); err != nil {
@@ -169,21 +161,16 @@ func main() {
 		scanline_pos += 501
 		scanline_pos %= int32(terminal_dims[0] * terminal_dims[1])
 
-		clearImage(operating_img, color.RGBA{0, 0, 0, 255})
 		if showui {
 			lines = MakeUI()
-			//draw text into image, texture
-			drawStringToImage(lines, operating_img, color.RGBA{255, 255, 255, 255})
-			overwriteTexWithImage(operating_img, textHandle)
-		} else {
 			clearImage(operating_img, color.RGBA{0, 0, 0, 255})
 
+			drawStringToImage(lines, operating_img, color.RGBA{255, 255, 255, 255})
+		} else {
+			clearImage(operating_img, color.RGBA{0, 0, 0, 255})
 			mw.DrawToImage(operating_img)
-			//lines = strings.Split(mw.s, "\n")
-			//lines = lines[max(0, len(lines)-int(term_cells[1])):]
-			overwriteTexWithImage(operating_img, textHandle)
-
 		}
+		overwriteTexWithImage(operating_img, textHandle)
 
 		// Do blurring
 		doCompute(blur_program, textHandle, pingHandle, terminal_dims)
