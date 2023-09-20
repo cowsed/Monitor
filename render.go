@@ -154,14 +154,15 @@ func initWindow() *glfw.Window {
 	if err != nil {
 		panic(err)
 	}
-	//mon := glfw.GetPrimaryMonitor()
+	// mon := glfw.GetPrimaryMonitor()
 
-	window, err := glfw.CreateWindow(int(win_dims[0]), int(win_dims[1]), "Testing", nil, nil)
+	window, err := glfw.CreateWindow(int(win_dims[0]), int(win_dims[1]), "Monitor", nil, nil)
 	if err != nil {
 		panic(err)
 	}
 	window.MakeContextCurrent()
 	window.SetKeyCallback(keyCall)
+	window.SetSizeCallback(sizeCallback)
 
 	// Important! Call gl.Init only under the presence of an active OpenGL context,
 	// i.e., after MakeContextCurrent.

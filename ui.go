@@ -35,6 +35,14 @@ func keyCall(w *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mod
 		os.Exit(0)
 	}
 
+	if key == glfw.KeyF11 && action == glfw.Press {
+		if w.GetMonitor() == nil {
+			w.SetMonitor(glfw.GetPrimaryMonitor(), 0, 0, glfw.GetPrimaryMonitor().GetVideoMode().Width, glfw.GetPrimaryMonitor().GetVideoMode().Height, 60)
+		} else {
+			w.SetMonitor(nil, 0, 0, int(win_dims[0]), int(win_dims[1]), 60)
+		}
+	}
+
 	if showui {
 		if key == glfw.KeyUp && action == glfw.Release {
 			prevSelection()
@@ -84,8 +92,11 @@ var keymap = map[keyCombo]string{
 
 	{glfw.KeyComma, 0}:              ",",
 	{glfw.KeyPeriod, 0}:             ".",
-	{glfw.KeyComma, glfw.ModShift}:  ",",
+	{glfw.KeyComma, glfw.ModShift}:  "<",
 	{glfw.KeyPeriod, glfw.ModShift}: ">",
+
+	{glfw.KeyGraveAccent, 0}:             "`",
+	{glfw.KeyGraveAccent, glfw.ModShift}: "~",
 
 	{glfw.KeySlash, 0}:             "/",
 	{glfw.KeySlash, glfw.ModShift}: "?",
@@ -204,7 +215,7 @@ func lowerSelection() {
 }
 
 func nextSelection() {
-	if selected < len(selections)-1 {
+	if selected < 5 {
 		selected++
 	}
 }
@@ -222,7 +233,11 @@ func MakeUI() []string {
 	lines = append(lines, fmt.Sprintf("Ambient Light: <%2.3f>", ambient))
 	lines = append(lines, fmt.Sprintf("Bloom Strength: <%2.3f>", bloomStrength))
 	lines = append(lines, fmt.Sprintf("Bloom Brightness: <%2.3f>", bloomBrightness))
-
+	lines = append(lines, "")
+	lines = append(lines, "[Guide]:")
+	lines = append(lines, "F11: Toggle Fullscreen")
+	lines = append(lines, "Ctrl + Q: Quit")
+	lines = append(lines, "Ctrl + S: Toggle Settings")
 	lines[selected+1] = "> " + lines[min(selected+1, len(lines)-1)]
 
 	return lines

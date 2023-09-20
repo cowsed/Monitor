@@ -6,6 +6,7 @@ import (
 	"image/color"
 
 	"github.com/go-gl/gl/v4.6-core/gl"
+	"github.com/go-gl/glfw/v3.3/glfw"
 )
 
 //go:embed Shaders/full_screen_quad.frag
@@ -29,6 +30,10 @@ func doCompute(program uint32, from, to uint32, size [2]int32) {
 
 	gl.MemoryBarrier(gl.SHADER_IMAGE_ACCESS_BARRIER_BIT)
 
+}
+func sizeCallback(win *glfw.Window, w, h int) {
+	win_dims[0] = int32(w)
+	win_dims[1] = int32(h)
 }
 func doDrawing(screenProg uint32, vao uint32, scanline_pos int32, texture, bloom_handle uint32) {
 	gl.BindVertexArray(vao)
